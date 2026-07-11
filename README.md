@@ -12,6 +12,19 @@ This project includes a small browser-side Gemini playground using the Google Ge
 
 Note: browser-side API keys are visible to users, so move the request behind a server before production use.
 
+## ElevenLabs dubbing setup
+
+This project also includes a browser-side ElevenLabs helper for multi-character dialogue audio.
+
+1. Copy `.env.example` to `.env.local`.
+2. Add your ElevenLabs API key to `ELEVENLABS_API_KEY`.
+3. Set voice IDs for the character slots you want to use, at minimum `ELEVENLABS_VOICE_NARRATOR`, `ELEVENLABS_VOICE_HERO`, and `ELEVENLABS_VOICE_VILLAIN`.
+4. Run `npm run dev` and use the helper in `src/lib/elevenlabs.ts` to generate dialogue audio.
+
+The helper supports eight built-in character types: narrator, hero, skeptic, wild, calm, villain, whisper, and comic.
+
+If you want the frontend to read non-`VITE_` env vars, this repo is configured to expose the `ELEVENLABS_` prefix in Vite.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
