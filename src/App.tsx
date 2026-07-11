@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import CampfireLobbyScene from './components/CampfireLobbyScene'
+import GameContainer from './components/TuringTable/GameContainer'
 
 export default function App() {
   const [gameStarted, setGameStarted] = useState(false)
@@ -44,6 +45,8 @@ export default function App() {
           </div>
         </>
       ) : null}
+
+      {gameStarted ? <GameContainer /> : null}
 
       {gameStarted ? (
         <button

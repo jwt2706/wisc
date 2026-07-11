@@ -4,6 +4,14 @@ import characterSpriteSheet2 from '../assets/agent2.png'
 import characterSpriteSheet3 from '../assets/agent3.png'
 import characterSpriteSheet4 from '../assets/agent4.png'
 import characterSpriteSheet5 from '../assets/agent5.png'
+import type { ElevenLabsCharacterType } from './elevenlabs'
+
+export type CampfireCharacterVoiceAssignment = {
+  characterId: string
+  label: string
+  voiceType: ElevenLabsCharacterType
+  spriteSheet: string
+}
 
 type CharacterRig = {
   group: THREE.Group
@@ -25,6 +33,39 @@ type CampfireCharactersHandle = {
   update: (elapsed: number, camera: THREE.Camera) => void
   dispose: () => void
 }
+
+const CAMPFIRE_CHARACTER_ROSTER: CampfireCharacterVoiceAssignment[] = [
+  {
+    characterId: 'violet',
+    label: 'Violet',
+    voiceType: 'voice_1',
+    spriteSheet: characterSpriteSheet1,
+  },
+  {
+    characterId: 'patrick',
+    label: 'Patrick',
+    voiceType: 'voice_2',
+    spriteSheet: characterSpriteSheet2,
+  },
+  {
+    characterId: 'calvin',
+    label: 'Calvin',
+    voiceType: 'voice_3',
+    spriteSheet: characterSpriteSheet3,
+  },
+  {
+    characterId: 'cinder',
+    label: 'Cinder',
+    voiceType: 'voice_4',
+    spriteSheet: characterSpriteSheet4,
+  },
+  {
+    characterId: 'steve',
+    label: 'Steve',
+    voiceType: 'voice_5',
+    spriteSheet: characterSpriteSheet5,
+  },
+]
 
 const CHARACTER_SPECS = [
   {
@@ -106,16 +147,8 @@ function disposeCharacterRig(rig: CharacterRig) {
 }
 
 export function createCampfireCharacters(scene: THREE.Scene): CampfireCharactersHandle {
-  const sourceTextures = [
-    characterSpriteSheet1,
-    characterSpriteSheet2,
-    characterSpriteSheet3,
-    characterSpriteSheet4,
-    characterSpriteSheet5,
-  ]
-
-  const baseTextures = sourceTextures.map((source) => {
-    const texture = new THREE.TextureLoader().load(source)
+  const baseTextures = CAMPFIRE_CHARACTER_ROSTER.map((character) => {
+    const texture = new THREE.TextureLoader().load(character.spriteSheet)
     configureTexture(texture)
     return texture
   })
@@ -194,4 +227,12 @@ export function createCampfireCharacters(scene: THREE.Scene): CampfireCharacters
       baseTextures.forEach((texture) => texture.dispose())
     },
   }
+}
+
+export function getCampfireCharacterVoiceAssignments() {
+  return CAMPFIRE_CHARACTER_ROSTER.map(({ characterId, label, voiceType }) => ({
+    characterId,
+    label,
+    voiceType,
+  }))
 }
