@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/wisc/',
   plugins: [react(), tailwindcss()],
   envPrefix: ['VITE_', 'ELEVENLABS_'],
 })
