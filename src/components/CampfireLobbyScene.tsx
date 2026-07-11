@@ -187,12 +187,12 @@ export default function CampfireLobbyScene({
     moonLight.position.set(-8, 14, -6)
     scene.add(moonLight)
 
-    const fireLight = new THREE.PointLight(0xff9b45, 7.5, 24, 2)
-    fireLight.position.set(0, 1.25, 0)
+    const fireLight = new THREE.PointLight(0xff9b45, 6.2, 22, 2)
+    fireLight.position.set(0, 1.05, 0)
     scene.add(fireLight)
 
-    const emberLight = new THREE.PointLight(0xffcf8f, 2, 14, 2)
-    emberLight.position.set(0, 0.35, 0)
+    const emberLight = new THREE.PointLight(0xffcf8f, 1.6, 12, 2)
+    emberLight.position.set(0, 0.25, 0)
     scene.add(emberLight)
 
     const ground = new THREE.Mesh(
@@ -261,6 +261,7 @@ export default function CampfireLobbyScene({
 
     const campfire = new THREE.Group()
     campfire.position.set(0, -0.04, 0)
+    campfire.scale.setScalar(0.72)
     scene.add(campfire)
 
     const logMaterial = new THREE.MeshStandardMaterial({
@@ -295,7 +296,7 @@ export default function CampfireLobbyScene({
         opacity: 0.8,
       }),
     )
-    emberCore.position.y = 0.68
+    emberCore.position.y = 0.58
     campfire.add(emberCore)
 
     const fireGlow = new THREE.Sprite(
@@ -307,8 +308,8 @@ export default function CampfireLobbyScene({
         blending: THREE.AdditiveBlending,
       }),
     )
-    fireGlow.scale.set(4.2, 4.2, 1)
-    fireGlow.position.y = 1.1
+    fireGlow.scale.set(2.8, 2.8, 1)
+    fireGlow.position.y = 0.8
     campfire.add(fireGlow)
 
     const emberRing = new THREE.Group()
@@ -439,11 +440,11 @@ export default function CampfireLobbyScene({
         depthWrite: false,
       })
 
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), material)
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 1.28), material)
       plane.position.y = 0.12
 
       character.group.position.set(character.baseX, character.baseY, character.baseZ)
-      character.group.scale.setScalar(1.72 + index * 0.03)
+      character.group.scale.setScalar(1.92 + index * 0.06)
       character.group.add(shadow, plane)
       scene.add(character.group)
     })
@@ -481,10 +482,10 @@ export default function CampfireLobbyScene({
       })
 
       campfire.rotation.y = Math.sin(elapsed * 0.15) * 0.08
-      emberCore.scale.setScalar(1 + Math.sin(elapsed * 6.2) * 0.04)
-      fireGlow.scale.setScalar(4.2 + Math.sin(elapsed * 5.3) * 0.18)
-      fireLight.intensity = 7.1 + Math.sin(elapsed * 7.8) * 1.05
-      emberLight.intensity = 2.1 + Math.sin(elapsed * 6.5) * 0.25
+      emberCore.scale.setScalar(1 + Math.sin(elapsed * 6.2) * 0.025)
+      fireGlow.scale.setScalar(2.8 + Math.sin(elapsed * 5.3) * 0.1)
+      fireLight.intensity = 5 + Math.sin(elapsed * 7.8) * 0.75
+      emberLight.intensity = 1.35 + Math.sin(elapsed * 6.5) * 0.15
       smoke.rotation.y = elapsed * 0.04
 
       const targetZ = isPlayingRef.current ? 8.8 : 13.8
