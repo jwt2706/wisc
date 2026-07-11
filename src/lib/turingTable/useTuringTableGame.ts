@@ -51,24 +51,38 @@ function createInitialPlayers(): TuringTablePlayer[] {
   return [humanPlayer, ...aiPlayers]
 }
 
-async function playDiscussionAudio(voiceType: TuringTablePlayer['voiceType'], text: string) {
+type PreparedLine = {
+  text: string
+  audioUrl: string | null
+}
+
+// Generates a line's audio ahead of time so playback has zero wait once it's this
+// player's turn. Falls back to null (caption-only) if ElevenLabs fails for any reason.
+async function prepareDiscussionAudio(voiceType: TuringTablePlayer['voiceType'], text: string) {
   if (!voiceType) {
-    return
+    return null
   }
 
   try {
-    const audioUrl = await createElevenLabsDubbingUrl([{ characterType: voiceType, text }])
-
-    await new Promise<void>((resolve) => {
-      const audio = new Audio(audioUrl)
-      audio.onended = () => resolve()
-      audio.onerror = () => resolve()
-      audio.play().catch(() => resolve())
-    })
+    return await createElevenLabsDubbingUrl([{ characterType: voiceType, text }])
   } catch {
-    // If voice generation fails, just give the caption a moment on screen.
-    await new Promise((resolve) => setTimeout(resolve, 1600))
+    return null
   }
+}
+
+async function playPreparedAudio(audioUrl: string | null) {
+  if (!audioUrl) {
+    // No audio ready (missing voice or generation failed) - just hold on the caption.
+    await new Promise((resolve) => setTimeout(resolve, 1600))
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    const audio = new Audio(audioUrl)
+    audio.onended = () => resolve()
+    audio.onerror = () => resolve()
+    audio.play().catch(() => resolve())
+  })
 }
 
 export function useTuringTableGame() {
@@ -92,6 +106,8 @@ export function useTuringTableGame() {
 
   const playersRef = useRef(players)
   playersRef.current = players
+
+  const preparedLinesRef = useRef<Record<string, PreparedLine>>({})
 
   const remainingPlayers = useMemo(() => players.filter((player) => !player.eliminated), [players])
   const currentSpeakerId = speakingOrder[currentSpeakerIndex] ?? null
@@ -139,7 +155,9 @@ export function useTuringTableGame() {
     [currentPrompt],
   )
 
-  const runDiscussionTurn = useCallback(
+  // Plays back turns in order using lines that were already generated (text + audio) up
+  // front, so there's no per-turn wait. Only pauses when it reaches the human's turn.
+  const playDiscussionQueue = useCallback(
     async (order: string[], index: number, transcriptSoFar: DiscussionLine[]) => {
       if (index >= order.length) {
         setPhase('voting')
@@ -154,36 +172,25 @@ export function useTuringTableGame() {
         return
       }
 
-      setIsLoadingAi(true)
+      const prepared = preparedLinesRef.current[speakerId]
 
-      try {
-        const ownAnswer = currentAnswers.find((answer) => answer.playerId === speaker.id)?.text ?? ''
-        const remaining = playersRef.current.filter((player) => !player.eliminated)
-
-        const line = await generateAiDiscussionLine({
-          player: speaker,
-          prompt: currentPrompt,
-          ownAnswer,
-          anonymizedAnswers: anonymizedOrder,
-          transcriptSoFar,
-          remainingPlayers: remaining,
-        })
-
-        const newLine: DiscussionLine = { playerId: speaker.id, speakerLabel: speaker.label, text: line }
-        const nextTranscript = [...transcriptSoFar, newLine]
-        setDiscussionTranscript(nextTranscript)
-        setIsLoadingAi(false)
-
-        await playDiscussionAudio(speaker.voiceType, line)
-
+      if (!prepared) {
+        setError('Missing a prepared line for a player - skipping their turn.')
         setCurrentSpeakerIndex(index + 1)
-        await runDiscussionTurn(order, index + 1, nextTranscript)
-      } catch (caughtError) {
-        setIsLoadingAi(false)
-        setError(caughtError instanceof Error ? caughtError.message : 'A player lost their train of thought.')
+        await playDiscussionQueue(order, index + 1, transcriptSoFar)
+        return
       }
+
+      const newLine: DiscussionLine = { playerId: speaker.id, speakerLabel: speaker.label, text: prepared.text }
+      const nextTranscript = [...transcriptSoFar, newLine]
+      setDiscussionTranscript(nextTranscript)
+
+      await playPreparedAudio(prepared.audioUrl)
+
+      setCurrentSpeakerIndex(index + 1)
+      await playDiscussionQueue(order, index + 1, nextTranscript)
     },
-    [anonymizedOrder, currentAnswers, currentPrompt, findPlayer],
+    [findPlayer],
   )
 
   const beginDiscussion = useCallback(() => {
@@ -192,8 +199,48 @@ export function useTuringTableGame() {
     setCurrentSpeakerIndex(0)
     setDiscussionTranscript([])
     setPhase('discussing')
-    void runDiscussionTurn(order, 0, [])
-  }, [remainingPlayers, runDiscussionTurn])
+    setError(null)
+    setIsLoadingAi(true)
+
+    const aiSpeakers = order
+      .map((playerId) => findPlayer(playerId))
+      .filter((player): player is TuringTablePlayer => Boolean(player) && player!.role === 'ai')
+
+    void (async () => {
+      try {
+        // Fire off every AI's discussion line AND its voice audio in parallel - five
+        // Gemini calls and five ElevenLabs calls at once - instead of one at a time.
+        const preparedEntries = await Promise.all(
+          aiSpeakers.map(async (speaker) => {
+            const ownAnswer = currentAnswers.find((answer) => answer.playerId === speaker.id)?.text ?? ''
+            const remaining = playersRef.current.filter((player) => !player.eliminated)
+
+            const text = await generateAiDiscussionLine({
+              player: speaker,
+              prompt: currentPrompt,
+              ownAnswer,
+              anonymizedAnswers: anonymizedOrder,
+              transcriptSoFar: [],
+              remainingPlayers: remaining,
+            })
+
+            const audioUrl = await prepareDiscussionAudio(speaker.voiceType, text)
+
+            return [speaker.id, { text, audioUrl }] as const
+          }),
+        )
+
+        preparedLinesRef.current = Object.fromEntries(preparedEntries)
+        setIsLoadingAi(false)
+        await playDiscussionQueue(order, 0, [])
+      } catch (caughtError) {
+        setIsLoadingAi(false)
+        setError(
+          caughtError instanceof Error ? caughtError.message : 'The table had trouble getting its thoughts together.',
+        )
+      }
+    })()
+  }, [anonymizedOrder, currentAnswers, currentPrompt, findPlayer, playDiscussionQueue, remainingPlayers])
 
   const submitHumanDiscussionLine = useCallback(
     (text: string) => {
@@ -209,9 +256,9 @@ export function useTuringTableGame() {
 
       const nextIndex = currentSpeakerIndex + 1
       setCurrentSpeakerIndex(nextIndex)
-      void runDiscussionTurn(speakingOrder, nextIndex, nextTranscript)
+      void playDiscussionQueue(speakingOrder, nextIndex, nextTranscript)
     },
-    [currentSpeakerIndex, discussionTranscript, findPlayer, runDiscussionTurn, speakingOrder],
+    [currentSpeakerIndex, discussionTranscript, findPlayer, playDiscussionQueue, speakingOrder],
   )
 
   const finalizeVotesAndTally = useCallback(
