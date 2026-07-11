@@ -2,6 +2,16 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Gemini setup
+
+This project includes a small browser-side Gemini playground using the Google Gen AI SDK.
+
+1. Copy `.env.example` to `.env.local`.
+2. Add your Gemini API key to `VITE_GEMINI_API_KEY`.
+3. Run `npm run dev` and try a prompt in the app.
+
+Note: browser-side API keys are visible to users, so move the request behind a server before production use.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
