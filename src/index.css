@@ -1,1 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+:root {
+	color-scheme: dark;
+	font-family: 'Inter', sans-serif;
+	background:
+		radial-gradient(circle at top, rgba(255, 202, 123, 0.14), transparent 32%),
+		radial-gradient(circle at 20% 80%, rgba(62, 138, 112, 0.12), transparent 30%),
+		#040706;
+}
+
+html,
+body,
+#root {
+	min-height: 100%;
+}
+
+body {
+	margin: 0;
+	overflow-x: hidden;
+	background: #040706;
+	color: #f4e8cf;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+canvas {
+	display: block;
+}
+
+.font-display {
+	font-family: 'Cinzel', serif;
+}
