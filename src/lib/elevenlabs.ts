@@ -1,4 +1,5 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
+import type { TextToDialogueConvertRequestOutputFormat } from '@elevenlabs/elevenlabs-js/api/resources/textToDialogue/types'
 
 export const elevenLabsCharacterTypes = [
   'voice_1',
@@ -28,7 +29,7 @@ const defaultModelId =
   import.meta.env.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2'
 
 const defaultOutputFormat =
-  import.meta.env.ELEVENLABS_OUTPUT_FORMAT || 'mp3_44100_128'
+  (import.meta.env.ELEVENLABS_OUTPUT_FORMAT || 'mp3_44100_128') as TextToDialogueConvertRequestOutputFormat
 
 const characterVoiceProfiles: Record<ElevenLabsCharacterType, CharacterVoiceProfile> = {
   voice_1: {
@@ -114,7 +115,7 @@ export async function generateElevenLabsDubbingAudio(
   dialogueLines: ElevenLabsDialogueLine[],
   options?: {
     modelId?: string
-    outputFormat?: string
+    outputFormat?: TextToDialogueConvertRequestOutputFormat
     seed?: number
   },
 ) {
@@ -143,7 +144,7 @@ export async function createElevenLabsDubbingUrl(
   dialogueLines: ElevenLabsDialogueLine[],
   options?: {
     modelId?: string
-    outputFormat?: string
+    outputFormat?: TextToDialogueConvertRequestOutputFormat
     seed?: number
   },
 ) {
