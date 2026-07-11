@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import characterSpriteSheet from '../assets/agent1.png'
+import { createCampfireCharacters } from '../lib/campfireCharacters'
 
 function createGlowTexture() {
   const size = 128
@@ -46,20 +46,6 @@ type Firefly = {
   wobble: number
 }
 
-type AnimatedCharacter = {
-  group: THREE.Group
-  texture: THREE.Texture
-  frameCount: number
-  frameDuration: number
-  framePhase: number
-  baseX: number
-  baseY: number
-  baseZ: number
-  bobSpeed: number
-  bobAmount: number
-  swayAmount: number
-}
-
 type CampfireLobbySceneProps = {
   isPlaying?: boolean
 }
@@ -69,6 +55,7 @@ export default function CampfireLobbyScene({
 }: CampfireLobbySceneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isPlayingRef = useRef(false)
+  const characterRigRef = useRef<ReturnType<typeof createCampfireCharacters> | null>(null)
 
   useEffect(() => {
     isPlayingRef.current = isPlaying
@@ -93,92 +80,6 @@ export default function CampfireLobbyScene({
     container.appendChild(renderer.domElement)
 
     const glowTexture = createGlowTexture()
-    const characterTexture = new THREE.TextureLoader().load(characterSpriteSheet)
-    characterTexture.colorSpace = THREE.SRGBColorSpace
-    characterTexture.minFilter = THREE.NearestFilter
-    characterTexture.magFilter = THREE.NearestFilter
-    characterTexture.generateMipmaps = false
-
-    const createCharacterTexture = () => {
-      const texture = characterTexture.clone()
-      texture.colorSpace = THREE.SRGBColorSpace
-      texture.minFilter = THREE.NearestFilter
-      texture.magFilter = THREE.NearestFilter
-      texture.generateMipmaps = false
-      texture.wrapS = THREE.RepeatWrapping
-      texture.wrapT = THREE.RepeatWrapping
-      texture.repeat.set(1 / 4, 1)
-      texture.offset.set(0, 0)
-      return texture
-    }
-
-    const animatedCharacters: AnimatedCharacter[] = [
-      {
-        group: new THREE.Group(),
-        texture: createCharacterTexture(),
-        frameCount: 4,
-        frameDuration: 0.16,
-        framePhase: 0,
-        baseX: -3.2,
-        baseY: -0.08,
-        baseZ: -2.8,
-        bobSpeed: 2.6,
-        bobAmount: 0.04,
-        swayAmount: 0.08,
-      },
-      {
-        group: new THREE.Group(),
-        texture: createCharacterTexture(),
-        frameCount: 4,
-        frameDuration: 0.18,
-        framePhase: 1,
-        baseX: -1.6,
-        baseY: -0.1,
-        baseZ: -3.5,
-        bobSpeed: 2.9,
-        bobAmount: 0.05,
-        swayAmount: 0.06,
-      },
-      {
-        group: new THREE.Group(),
-        texture: createCharacterTexture(),
-        frameCount: 4,
-        frameDuration: 0.17,
-        framePhase: 2,
-        baseX: 0,
-        baseY: -0.11,
-        baseZ: -3.9,
-        bobSpeed: 2.4,
-        bobAmount: 0.045,
-        swayAmount: 0.07,
-      },
-      {
-        group: new THREE.Group(),
-        texture: createCharacterTexture(),
-        frameCount: 4,
-        frameDuration: 0.19,
-        framePhase: 3,
-        baseX: 1.6,
-        baseY: -0.09,
-        baseZ: -3.45,
-        bobSpeed: 2.8,
-        bobAmount: 0.05,
-        swayAmount: 0.06,
-      },
-      {
-        group: new THREE.Group(),
-        texture: createCharacterTexture(),
-        frameCount: 4,
-        frameDuration: 0.2,
-        framePhase: 1,
-        baseX: 3.1,
-        baseY: -0.08,
-        baseZ: -2.9,
-        bobSpeed: 2.5,
-        bobAmount: 0.04,
-        swayAmount: 0.08,
-      },
-    ]
 
     const ambient = new THREE.AmbientLight(0x6f877a, 0.75)
     scene.add(ambient)
@@ -224,6 +125,7 @@ export default function CampfireLobbyScene({
       roughness: 1,
       metalness: 0,
     })
+
     const treePositions = [
       [-18, -1, -10],
       [-16, -1, -2],
@@ -419,36 +321,6 @@ export default function CampfireLobbyScene({
     )
     scene.add(smoke)
 
-    animatedCharacters.forEach((character, index) => {
-      const shadow = new THREE.Mesh(
-        new THREE.CircleGeometry(0.5, 24),
-        new THREE.MeshBasicMaterial({
-          color: 0x000000,
-          transparent: true,
-          opacity: 0.26,
-        }),
-      )
-      shadow.rotation.x = -Math.PI / 2
-      shadow.position.y = -0.72
-      shadow.scale.set(1.25, 0.72, 1)
-
-      const material = new THREE.MeshBasicMaterial({
-        map: character.texture,
-        transparent: true,
-        alphaTest: 0.05,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 1.28), material)
-      plane.position.y = 0.12
-
-      character.group.position.set(character.baseX, character.baseY, character.baseZ)
-      character.group.scale.setScalar(1.92 + index * 0.06)
-      character.group.add(shadow, plane)
-      scene.add(character.group)
-    })
-
     const resize = () => {
       const width = container.clientWidth || window.innerWidth
       const height = container.clientHeight || window.innerHeight
@@ -463,23 +335,18 @@ export default function CampfireLobbyScene({
     window.addEventListener('resize', resize)
 
     const clock = new THREE.Clock()
-    let animationFrame = window.requestAnimationFrame(animate)
 
     function animate() {
       const elapsed = clock.getElapsedTime()
-      animatedCharacters.forEach((character, index) => {
-        const frameIndex =
-          (Math.floor(elapsed / character.frameDuration) + character.framePhase) % character.frameCount
 
-        character.texture.repeat.set(1 / character.frameCount, 1)
-        character.texture.offset.x = frameIndex / character.frameCount
-        character.texture.offset.y = 0
+      if (isPlayingRef.current && !characterRigRef.current) {
+        characterRigRef.current = createCampfireCharacters(scene)
+      } else if (!isPlayingRef.current && characterRigRef.current) {
+        characterRigRef.current.dispose()
+        characterRigRef.current = null
+      }
 
-        character.group.position.x = character.baseX + Math.sin(elapsed * character.bobSpeed + index) * character.swayAmount
-        character.group.position.y = character.baseY + Math.sin(elapsed * character.bobSpeed * 1.2 + index) * character.bobAmount
-        character.group.position.z = character.baseZ + Math.cos(elapsed * character.bobSpeed * 0.9 + index) * (character.swayAmount * 0.5)
-        character.group.lookAt(camera.position.x, character.group.position.y + 0.35, camera.position.z)
-      })
+      characterRigRef.current?.update(elapsed, camera)
 
       campfire.rotation.y = Math.sin(elapsed * 0.15) * 0.08
       emberCore.scale.setScalar(1 + Math.sin(elapsed * 6.2) * 0.025)
@@ -537,17 +404,15 @@ export default function CampfireLobbyScene({
       animationFrame = window.requestAnimationFrame(animate)
     }
 
+    let animationFrame = window.requestAnimationFrame(animate)
+
     return () => {
       window.cancelAnimationFrame(animationFrame)
       window.removeEventListener('resize', resize)
       container.removeChild(renderer.domElement)
       glowTexture.dispose()
-      characterTexture.dispose()
-      animatedCharacters.forEach((character) => {
-        character.texture.dispose()
-        ;(character.group.children[0] as THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>).material.dispose()
-        ;(character.group.children[1] as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>).material.dispose()
-      })
+      characterRigRef.current?.dispose()
+      characterRigRef.current = null
       renderer.dispose()
     }
   }, [])
