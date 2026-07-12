@@ -13,6 +13,7 @@ export default function VotingPhase({ game }: { game: TuringTableGame }) {
         {game.tieCandidateIds ? 'Tie — revote' : 'Cast your vote'}
       </p>
       <h2 className="mt-3 font-display text-xl text-[#f8ecd1]">Who do you think is human?</h2>
+      <p className="mt-2 text-sm text-slate-400">The AI characters are voting too, and they can vote for you.</p>
 
       <div className="mt-6 grid gap-3">
         {candidates.map((candidate) => (

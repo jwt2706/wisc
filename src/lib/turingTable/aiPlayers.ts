@@ -132,7 +132,20 @@ Your personality: ${personality}. Let that come through in how you talk, but don
 yourself - just talk like that kind of person would.
 
 One person at this table is secretly a real human answering by voice; everyone else is an AI, but nobody
-announces which they are. The prompt everyone answered was: "${prompt}"
+announces which they are. The discussion is about figuring out who might be the human, not about debating the
+prompt itself. The prompt everyone answered is mainly a clue for how a human vs. an AI might sound, so use it
+that way rather than treating it like the main topic of conversation.
+
+For this game, human-like signals are suspicious and AI-like signals are normal. Treat messy, personal,
+improvised, or inconsistent phrasing as potential evidence someone is human, and treat polished or generically
+AI-sounding phrasing as less suspicious.
+
+Act like this is a tense social deduction argument, not a calm analysis. Be willing to accuse specific players,
+pick a side, back someone up, or challenge someone's defense. If someone's answer sounded like they were trying
+too hard to fit in as a bot (too generic, too safe, too deliberately "AI-ish"), call that out as suspicious too.
+You can accuse any player at the table, including the human player's label shown in the player list, based on what they said.
+
+The prompt everyone answered was: "${prompt}"
 
 Here are this round's anonymized one-sentence answers:
 ${answerList}
@@ -162,9 +175,10 @@ export async function generateAiVote(params: {
   anonymizedAnswers: AnonymizedAnswer[]
   transcript: DiscussionLine[]
   candidates: TuringTablePlayer[]
+  humanPlayerLabel: string
   personality?: string
-}): Promise<string> {
-  const { player, prompt, ownAnswer, anonymizedAnswers, transcript, candidates } = params
+}): Promise<{ targetId: string; reason?: string; humanSuspicionPercent?: number; humanSuspicionReason?: string }> {
+  const { player, prompt, ownAnswer, anonymizedAnswers, transcript, candidates, humanPlayerLabel } = params
   const personality = params.personality ?? personalityForPlayer(player.id)
 
   const answerList = anonymizedAnswers
@@ -183,6 +197,9 @@ ${personality}. Let that come through in your reasoning, but don't announce it o
 One player at the table is secretly a real human; the rest are AI players like you, but nobody has confirmed
 roles. The prompt was: "${prompt}"
 
+In this game, the suspicious target is the human. Human-like signals (messy, personal, improvised,
+inconsistent) are suspicious, while polished or generically AI-sounding responses are more normal.
+
 Anonymized one-sentence answers this round:
 ${answerList}
 
@@ -191,22 +208,46 @@ Your own answer was: "${ownAnswer}"
 Full discussion transcript:
 ${transcriptText}
 
+The player named "${humanPlayerLabel}" might be the human, but so might someone else. Separate from your vote,
+estimate how suspicious you are of ${humanPlayerLabel} specifically on a scale from 0 to 100, where 0 means
+"I think they're almost certainly not the human" and 100 means "I'm nearly sure they're the human."
+
 You must vote to eliminate one other player who you think is most likely the human. Choose from these
 candidates (never vote for yourself, your id is "${player.id}"):
 ${candidateList}
 
-Respond with ONLY a JSON object of the shape {"targetId": string, "reason": string} where targetId is exactly
-one of the candidate ids above.`
+Respond with ONLY a JSON object of the shape {"targetId": string, "reason": string, "humanSuspicionPercent": number, "humanSuspicionReason": string}
+where targetId is exactly one of the candidate ids above and humanSuspicionPercent is a number from 0 to 100.`
 
-  const result = await generateGeminiJSON<{ targetId: string; reason: string }>(instruction)
+  const result = await generateGeminiJSON<{
+    targetId: string
+    reason: string
+    humanSuspicionPercent?: number
+    humanSuspicionReason?: string
+  }>(instruction)
   const isValidTarget = candidates.some((candidate) => candidate.id === result.targetId)
+  const rawSuspicion = Number(result.humanSuspicionPercent)
+  const humanSuspicionPercent = Number.isFinite(rawSuspicion)
+    ? Math.max(0, Math.min(100, Math.round(rawSuspicion)))
+    : undefined
+  const humanSuspicionReason = cleanOneLiner(result.humanSuspicionReason ?? '') || undefined
 
   if (isValidTarget) {
-    return result.targetId
+    const cleanedReason = cleanOneLiner(result.reason ?? '')
+    return {
+      targetId: result.targetId,
+      reason: cleanedReason || undefined,
+      humanSuspicionPercent,
+      humanSuspicionReason,
+    }
   }
 
   // Fall back to a random valid candidate if Gemini returns something unusable.
-  return candidates[Math.floor(Math.random() * candidates.length)].id
+  return {
+    targetId: candidates[Math.floor(Math.random() * candidates.length)].id,
+    humanSuspicionPercent,
+    humanSuspicionReason,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +363,14 @@ export async function generateAiDiscussionRound(params: {
 social deduction game Turing Table. One person at this table is secretly a real human answering by voice;
 everyone else is an AI, but nobody announces which they are. The prompt everyone answered was: "${prompt}"
 
+In this game, human-like signals are suspicious and AI-like signals are normal. Treat messy, personal,
+improvised, or inconsistent phrasing as potential evidence someone is human, and treat polished or generically
+AI-sounding phrasing as less suspicious.
+
+Also treat "trying too hard to sound bot-like" as suspicious when it feels fake. If someone gives an overly
+generic, safe, template-like answer that sounds like they are intentionally blending in with bots, players
+should call that out too.
+
 Here are this round's anonymized one-sentence answers:
 ${answerList}
 
@@ -337,11 +386,21 @@ ${speakerBlock}
 
 Write it as a real back-and-forth: each player's line should be written as if it comes after the players
 before them in this list have already spoken (react to a specific answer, question someone, defend their own
-answer if it's under suspicion, respond to what the previous player in this list just said, etc). Each line
-should be short and casual, 1-2 sentences, spoken like real conversation, not written like an essay. Make sure
-the lines genuinely sound like different people talking, not one voice repeated - vary sentence structure,
-tone, and what each one chooses to focus on. Never have anyone explicitly say "I'm the human" or "I'm an AI"
-or anything that flatly reveals a role.
+answer if it's under suspicion, respond to what the previous player in this list just said, etc). Let them
+challenge each other directly and apply social pressure: call out inconsistencies, push for specifics, accuse,
+deflect, and counter-accuse like a tense elimination round.
+
+Hard dialogue rules:
+- Every line must reference something concrete from either the answers or the discussion so far; no generic filler.
+- At least half of the lines should directly address another player by name.
+- Across the set of lines, make clear factions/sides forming (players backing or targeting the same person).
+- Include at least one direct accusation that a player sounds like they are "trying to fit in as a bot" by being generic.
+- Any player may be accused, including the human player's label shown in the player list.
+- Include disagreement and interruption energy, but keep it natural and concise.
+- No narration or stage directions (no "(laughs)", "he says", etc), only spoken words.
+- Keep each line to 1-2 short sentences, casual spoken style, not an essay.
+- Make voices clearly distinct: vary structure, rhythm, and vocabulary so they don't sound like one writer.
+- Never have anyone explicitly say "I'm the human" or "I'm an AI" or anything that flatly reveals a role.
 
 Respond with ONLY a JSON object of the shape {"lines": [{"playerId": string, "text": string}, ...]}, with
 exactly one entry per player id listed above, in the same order.`
@@ -382,7 +441,7 @@ exactly one entry per player id listed above, in the same order.`
       })
     }
 
-    const line: DiscussionLine = { speakerLabel: player.label, text }
+    const line: DiscussionLine = { playerId: player.id, speakerLabel: player.label, text }
     lines.push(line)
     runningTranscript = [...runningTranscript, line]
   }
@@ -397,8 +456,9 @@ export async function generateAiVotes(params: {
   ownAnswers: Record<string, string>
   transcript: DiscussionLine[]
   candidates: TuringTablePlayer[]
+  humanPlayerLabel: string
 }): Promise<Record<string, string>> {
-  const { voters, prompt, anonymizedAnswers, ownAnswers, transcript, candidates } = params
+  const { voters, prompt, anonymizedAnswers, ownAnswers, transcript, candidates, humanPlayerLabel } = params
 
   if (voters.length === 0) return {}
 
@@ -423,6 +483,9 @@ export async function generateAiVotes(params: {
   const instruction = `You're playing ${voters.length} different AI players at once in the social deduction game
 Turing Table. One player at the table is secretly a real human; the rest are AI players like these, but nobody
 has confirmed roles. The prompt was: "${prompt}"
+
+In this game, the suspicious target is the human. Human-like signals (messy, personal, improvised,
+inconsistent) are suspicious, while polished or generically AI-sounding responses are more normal.
 
 Anonymized one-sentence answers this round:
 ${answerList}
@@ -477,12 +540,13 @@ id listed above, where targetId is one of the candidate ids and is never equal t
           anonymizedAnswers,
           transcript,
           candidates: candidates.filter((c) => c.id !== voter.id),
+          humanPlayerLabel,
           personality: personalities.get(voter.id),
         })
       )
     )
     missingVoters.forEach((voter, i) => {
-      votes[voter.id] = fallbackResults[i]
+      votes[voter.id] = fallbackResults[i].targetId
     })
   }
 

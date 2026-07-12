@@ -30,6 +30,9 @@ export type DiscussionLine = {
 export type VoteRecord = {
   voterId: string
   targetId: string
+  reason?: string
+  humanSuspicionPercent?: number
+  humanSuspicionReason?: string
 }
 
 export type RoundRecord = {

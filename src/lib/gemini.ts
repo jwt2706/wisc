@@ -5,7 +5,6 @@ import { GoogleGenAI } from '@google/genai'
 const MODEL_FALLBACK_CHAIN = [
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
-  'gemma-4-26b-it',
   'gemma-4-31b-it',
 ]
 

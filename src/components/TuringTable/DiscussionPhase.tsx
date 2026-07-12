@@ -24,6 +24,9 @@ export default function DiscussionPhase({ game }: { game: TuringTableGame }) {
   return (
     <div className="rounded-[2rem] border border-white/10 bg-neutral-950/70 p-8 shadow-2xl shadow-black/50 backdrop-blur-md">
       <p className="text-center text-xs font-semibold uppercase tracking-[0.35em] text-amber-200/70">Discussion</p>
+      <p className="mt-3 text-center text-sm text-slate-400">
+        Find who sounds most human. Human-like answers are suspicious here.
+      </p>
 
       <div className="mt-6 max-h-72 space-y-3 overflow-y-auto pr-1">
         {game.discussionTranscript.map((line, index) => (
@@ -36,7 +39,7 @@ export default function DiscussionPhase({ game }: { game: TuringTableGame }) {
 
       {isHumanTurn ? (
         <div className="mt-8 flex w-full flex-col items-center gap-3">
-          <p className="text-sm text-slate-300">Your turn — say something to the table.</p>
+          <p className="text-sm text-slate-300">Your turn — cast suspicion on who sounds most human.</p>
           <input
             autoFocus
             className="w-full max-w-md rounded-full border border-white/15 bg-neutral-900/80 px-5 py-3 text-center text-sm text-slate-100 outline-none focus:border-amber-200/40"

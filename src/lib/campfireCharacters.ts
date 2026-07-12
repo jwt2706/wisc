@@ -14,6 +14,7 @@ export type CampfireCharacterVoiceAssignment = {
 }
 
 type CharacterRig = {
+  characterId: string
   group: THREE.Group
   texture: THREE.Texture
   frameCount: number
@@ -32,6 +33,8 @@ type CharacterRig = {
 type CampfireCharactersHandle = {
   update: (elapsed: number, camera: THREE.Camera) => void
   dispose: () => void
+  getCharacterPosition: (characterId: string) => THREE.Vector3 | null
+  setHiddenCharacterIds: (characterIds: string[]) => void
 }
 
 const CAMPFIRE_CHARACTER_ROSTER: CampfireCharacterVoiceAssignment[] = [
@@ -153,7 +156,8 @@ export function createCampfireCharacters(scene: THREE.Scene): CampfireCharacters
     return texture
   })
 
-  const rigs: CharacterRig[] = CHARACTER_SPECS.map((spec, index) => {
+  const rigs: CharacterRig[] = CAMPFIRE_CHARACTER_ROSTER.map((character, index) => {
+    const spec = CHARACTER_SPECS[index]
     const group = new THREE.Group()
     const texture = createCharacterTexture(baseTextures[index])
 
@@ -187,6 +191,7 @@ export function createCampfireCharacters(scene: THREE.Scene): CampfireCharacters
     scene.add(group)
 
     return {
+      characterId: character.characterId,
       group,
       texture,
       frameCount: 4,
@@ -225,6 +230,23 @@ export function createCampfireCharacters(scene: THREE.Scene): CampfireCharacters
         disposeCharacterRig(rig)
       })
       baseTextures.forEach((texture) => texture.dispose())
+    },
+    getCharacterPosition: (characterId) => {
+      const rig = rigs.find((candidate) => candidate.characterId === characterId)
+
+      if (!rig) {
+        return null
+      }
+
+      const worldPosition = new THREE.Vector3()
+      rig.group.getWorldPosition(worldPosition)
+      return worldPosition
+    },
+    setHiddenCharacterIds: (characterIds) => {
+      const hiddenSet = new Set(characterIds)
+      rigs.forEach((rig) => {
+        rig.group.visible = !hiddenSet.has(rig.characterId)
+      })
     },
   }
 }

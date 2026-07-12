@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { createCampfireCharacters } from '../lib/campfireCharacters'
+import {
+  createCampfireCharacters,
+  getCampfireCharacterVoiceAssignments,
+} from '../lib/campfireCharacters'
+
+const CHARACTER_LABELS = getCampfireCharacterVoiceAssignments()
 
 function createGlowTexture() {
   const size = 128
@@ -48,18 +53,49 @@ type Firefly = {
 
 type CampfireLobbySceneProps = {
   isPlaying?: boolean
+  focusCharacterId?: string | null
+  hiddenCharacterIds?: string[]
+  characterSpeechById?: Record<string, string>
 }
 
 export default function CampfireLobbyScene({
   isPlaying = false,
+  focusCharacterId = null,
+  hiddenCharacterIds = [],
+  characterSpeechById = {},
 }: CampfireLobbySceneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const isPlayingRef = useRef(false)
+  const focusCharacterIdRef = useRef<string | null>(null)
+  const hiddenCharacterIdsRef = useRef<string[]>([])
+  const characterSpeechByIdRef = useRef<Record<string, string>>({})
+  const selectedSpeechCharacterIdRef = useRef<string | null>(null)
   const characterRigRef = useRef<ReturnType<typeof createCampfireCharacters> | null>(null)
+  const cameraFrameRef = useRef({
+    aspect: 1,
+    framingOffset: 0,
+    lobbyZ: 13.8,
+    playZ: 8.8,
+    lobbyY: 5.2,
+    playY: 4.35,
+    baseFov: 45,
+  })
 
   useEffect(() => {
     isPlayingRef.current = isPlaying
   }, [isPlaying])
+
+  useEffect(() => {
+    focusCharacterIdRef.current = focusCharacterId
+  }, [focusCharacterId])
+
+  useEffect(() => {
+    hiddenCharacterIdsRef.current = hiddenCharacterIds
+  }, [hiddenCharacterIds])
+
+  useEffect(() => {
+    characterSpeechByIdRef.current = characterSpeechById
+  }, [characterSpeechById])
 
   useEffect(() => {
     const container = containerRef.current
@@ -73,11 +109,80 @@ export default function CampfireLobbyScene({
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 120)
     camera.position.set(0, 5.2, 13.8)
+    const cameraLookTarget = new THREE.Vector3(0, 0.55, 0)
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setClearColor(0x000000, 0)
+    renderer.domElement.style.width = '100%'
+    renderer.domElement.style.height = '100%'
+    renderer.domElement.style.display = 'block'
     container.appendChild(renderer.domElement)
+
+    const labelLayer = document.createElement('div')
+    labelLayer.style.position = 'absolute'
+    labelLayer.style.inset = '0'
+    labelLayer.style.pointerEvents = 'none'
+    labelLayer.style.zIndex = '2'
+    container.appendChild(labelLayer)
+
+    const labelElements = new Map<string, { root: HTMLDivElement; speech: HTMLDivElement }>()
+    CHARACTER_LABELS.forEach((character) => {
+      const wrapper = document.createElement('div')
+      wrapper.style.position = 'absolute'
+      wrapper.style.left = '0'
+      wrapper.style.top = '0'
+      wrapper.style.transform = 'translate(-50%, -50%)'
+      wrapper.style.display = 'flex'
+      wrapper.style.flexDirection = 'column'
+      wrapper.style.alignItems = 'center'
+      wrapper.style.gap = '0.35rem'
+
+      const speech = document.createElement('div')
+      speech.style.maxWidth = '220px'
+      speech.style.padding = '0.45rem 0.65rem'
+      speech.style.borderRadius = '0.9rem'
+      speech.style.border = '1px solid rgba(255, 238, 205, 0.44)'
+      speech.style.background = 'rgba(9, 12, 10, 0.8)'
+      speech.style.color = '#f8edd4'
+      speech.style.fontSize = '11px'
+      speech.style.fontWeight = '600'
+      speech.style.lineHeight = '1.25'
+      speech.style.textAlign = 'center'
+      speech.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.38)'
+      speech.style.backdropFilter = 'blur(3px)'
+      speech.style.display = 'none'
+      speech.style.pointerEvents = 'auto'
+      speech.style.cursor = 'pointer'
+      speech.style.transition = 'transform 180ms ease, box-shadow 180ms ease, background 180ms ease, max-width 180ms ease'
+      speech.style.transformOrigin = '50% 100%'
+
+      speech.addEventListener('click', (event) => {
+        event.stopPropagation()
+        selectedSpeechCharacterIdRef.current =
+          selectedSpeechCharacterIdRef.current === character.characterId ? null : character.characterId
+      })
+
+      const nameTag = document.createElement('div')
+      nameTag.textContent = character.label
+      nameTag.style.padding = '0.2rem 0.55rem'
+      nameTag.style.borderRadius = '999px'
+      nameTag.style.border = '1px solid rgba(255, 238, 205, 0.52)'
+      nameTag.style.background = 'rgba(8, 12, 10, 0.56)'
+      nameTag.style.backdropFilter = 'blur(2px)'
+      nameTag.style.color = '#f9eac8'
+      nameTag.style.fontSize = '12px'
+      nameTag.style.fontWeight = '700'
+      nameTag.style.letterSpacing = '0.08em'
+      nameTag.style.textTransform = 'uppercase'
+      nameTag.style.textShadow = '0 0 8px rgba(0, 0, 0, 0.45)'
+      nameTag.style.whiteSpace = 'nowrap'
+
+      wrapper.appendChild(speech)
+      wrapper.appendChild(nameTag)
+      labelLayer.appendChild(wrapper)
+      labelElements.set(character.characterId, { root: wrapper, speech })
+    })
 
     const glowTexture = createGlowTexture()
 
@@ -322,17 +427,42 @@ export default function CampfireLobbyScene({
     scene.add(smoke)
 
     const resize = () => {
-      const width = container.clientWidth || window.innerWidth
-      const height = container.clientHeight || window.innerHeight
+      const bounds = container.getBoundingClientRect()
+      const width = Math.max(1, Math.round(bounds.width || window.innerWidth))
+      const height = Math.max(1, Math.round(bounds.height || window.innerHeight))
+      const aspect = width / height
 
-      camera.aspect = width / height
+      // Keep the whole table in frame on narrower displays by slightly widening
+      // FOV and pulling the camera back.
+      const referenceAspect = 16 / 9
+      const narrowness = THREE.MathUtils.clamp(referenceAspect / aspect, 0.82, 1.45)
+      const framingOffset = (narrowness - 1) * 2.35
+
+      cameraFrameRef.current = {
+        aspect,
+        framingOffset,
+        lobbyZ: 13.8 + framingOffset,
+        playZ: 8.8 + framingOffset * 0.95,
+        lobbyY: 5.2 + framingOffset * 0.16,
+        playY: 4.35 + framingOffset * 0.14,
+        baseFov: 45 + framingOffset * 2.4,
+      }
+
+      camera.aspect = aspect
       camera.updateProjectionMatrix()
-      renderer.setSize(width, height, false)
+      renderer.setSize(width, height)
+      renderer.setViewport(0, 0, width, height)
     }
 
     resize()
 
     window.addEventListener('resize', resize)
+    const clearSpeechSelection = () => {
+      selectedSpeechCharacterIdRef.current = null
+    }
+    window.addEventListener('click', clearSpeechSelection)
+    const resizeObserver = new ResizeObserver(resize)
+    resizeObserver.observe(container)
 
     const clock = new THREE.Clock()
 
@@ -341,32 +471,128 @@ export default function CampfireLobbyScene({
 
       if (isPlayingRef.current && !characterRigRef.current) {
         characterRigRef.current = createCampfireCharacters(scene)
+        characterRigRef.current.setHiddenCharacterIds(hiddenCharacterIdsRef.current)
       } else if (!isPlayingRef.current && characterRigRef.current) {
         characterRigRef.current.dispose()
         characterRigRef.current = null
       }
 
+      characterRigRef.current?.setHiddenCharacterIds(hiddenCharacterIdsRef.current)
       characterRigRef.current?.update(elapsed, camera)
+
+      const hiddenSet = new Set(hiddenCharacterIdsRef.current)
+      const bounds = containerRef.current?.getBoundingClientRect()
+      const width = Math.max(1, bounds?.width ?? 1)
+      const height = Math.max(1, bounds?.height ?? 1)
+
+      CHARACTER_LABELS.forEach((character) => {
+        const label = labelElements.get(character.characterId)
+        const tag = label?.root
+        const speech = label?.speech
+
+        if (!tag || !characterRigRef.current || hiddenSet.has(character.characterId)) {
+          if (tag) {
+            tag.style.opacity = '0'
+          }
+          return
+        }
+
+        const worldPosition = characterRigRef.current.getCharacterPosition(character.characterId)
+
+        if (!worldPosition) {
+          tag.style.opacity = '0'
+          return
+        }
+
+        if (speech) {
+          const speechText = characterSpeechByIdRef.current[character.characterId]?.trim()
+          if (speechText) {
+            speech.textContent = speechText
+            speech.style.display = 'block'
+
+            const isSelected = selectedSpeechCharacterIdRef.current === character.characterId
+            speech.style.maxWidth = isSelected ? '320px' : '220px'
+            speech.style.background = isSelected ? 'rgba(14, 18, 16, 0.94)' : 'rgba(9, 12, 10, 0.8)'
+            speech.style.boxShadow = isSelected
+              ? '0 20px 46px rgba(0, 0, 0, 0.58)'
+              : '0 10px 30px rgba(0, 0, 0, 0.38)'
+            speech.style.transform = isSelected ? 'scale(1.2)' : 'scale(1)'
+            tag.style.zIndex = isSelected ? '30' : '2'
+          } else {
+            speech.style.display = 'none'
+            if (selectedSpeechCharacterIdRef.current === character.characterId) {
+              selectedSpeechCharacterIdRef.current = null
+            }
+            tag.style.zIndex = '2'
+          }
+        }
+
+        worldPosition.y += 1.7
+        worldPosition.project(camera)
+
+        // Hide tags when a character is outside the camera frustum.
+        if (
+          worldPosition.z < -1 ||
+          worldPosition.z > 1 ||
+          worldPosition.x < -1.1 ||
+          worldPosition.x > 1.1 ||
+          worldPosition.y < -1.15 ||
+          worldPosition.y > 1.15
+        ) {
+          tag.style.opacity = '0'
+          return
+        }
+
+        const screenX = (worldPosition.x * 0.5 + 0.5) * width
+        const screenY = (-worldPosition.y * 0.5 + 0.5) * height
+
+        tag.style.opacity = '1'
+        tag.style.transform = `translate(-50%, -50%) translate(${screenX}px, ${screenY}px)`
+      })
 
       campfire.rotation.y = Math.sin(elapsed * 0.15) * 0.08
       emberCore.scale.setScalar(1 + Math.sin(elapsed * 6.2) * 0.025)
       fireGlow.scale.setScalar(2.8 + Math.sin(elapsed * 5.3) * 0.1)
-      fireLight.intensity = 5 + Math.sin(elapsed * 7.8) * 0.75
+      fireLight.intensity = 5 + Math.sin(elapsed * 7.8)
       emberLight.intensity = 1.35 + Math.sin(elapsed * 6.5) * 0.15
       smoke.rotation.y = elapsed * 0.04
 
-      const targetZ = isPlayingRef.current ? 8.8 : 13.8
-      const targetY = isPlayingRef.current ? 4.35 : 5.2
-      const targetX = isPlayingRef.current ? 0.08 : 0
+      const focusPosition = focusCharacterIdRef.current
+        ? characterRigRef.current?.getCharacterPosition(focusCharacterIdRef.current)
+        : null
 
-      camera.position.x += (targetX + Math.sin(elapsed * 0.16) * 0.25 - camera.position.x) * 0.03
-      camera.position.y += (targetY + Math.sin(elapsed * 0.22) * 0.05 - camera.position.y) * 0.03
-      camera.position.z += (targetZ + Math.cos(elapsed * 0.11) * 0.18 - camera.position.z) * 0.035
-      camera.lookAt(
-        Math.sin(elapsed * 0.12) * 0.18,
-        0.55 + Math.sin(elapsed * 0.18) * 0.04,
-        0,
-      )
+      const { framingOffset, playZ, lobbyZ, playY, lobbyY, baseFov } = cameraFrameRef.current
+      const targetX = 0
+      const targetZ = isPlayingRef.current ? playZ : lobbyZ
+      const targetY = isPlayingRef.current ? playY : lobbyY
+
+      const desiredPosition = focusPosition
+        ? new THREE.Vector3(
+            focusPosition.x,
+            focusPosition.y + 1.35 + framingOffset * 0.08,
+            focusPosition.z + 2.75 + framingOffset * 0.85,
+          )
+        : new THREE.Vector3(
+            targetX + Math.sin(elapsed * 0.16) * 0.25,
+            targetY + Math.sin(elapsed * 0.22) * 0.05,
+            targetZ + Math.cos(elapsed * 0.11) * 0.18,
+          )
+
+      const desiredLookAt = focusPosition
+        ? new THREE.Vector3(focusPosition.x, focusPosition.y + 0.35, focusPosition.z)
+        : new THREE.Vector3(
+            Math.sin(elapsed * 0.12) * 0.18,
+            0.55 + Math.sin(elapsed * 0.18) * 0.04,
+            0,
+          )
+
+      camera.position.lerp(desiredPosition, focusPosition ? 0.06 : 0.03)
+      cameraLookTarget.lerp(desiredLookAt, focusPosition ? 0.07 : 0.03)
+      camera.lookAt(cameraLookTarget.x, cameraLookTarget.y, cameraLookTarget.z)
+
+      const targetFov = focusPosition ? baseFov - 15 : baseFov
+      camera.fov += (targetFov - camera.fov) * 0.06
+      camera.updateProjectionMatrix()
 
       fireflies.forEach((firefly, index) => {
         const angle = firefly.baseAngle + elapsed * firefly.speed
@@ -409,6 +635,9 @@ export default function CampfireLobbyScene({
     return () => {
       window.cancelAnimationFrame(animationFrame)
       window.removeEventListener('resize', resize)
+      window.removeEventListener('click', clearSpeechSelection)
+      resizeObserver.disconnect()
+      container.removeChild(labelLayer)
       container.removeChild(renderer.domElement)
       glowTexture.dispose()
       characterRigRef.current?.dispose()

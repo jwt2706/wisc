@@ -7,4 +7,12 @@ export default defineConfig({
   base: '/wisc/',
   plugins: [react(), tailwindcss()],
   envPrefix: ['VITE_', 'ELEVENLABS_'],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
+  },
 })

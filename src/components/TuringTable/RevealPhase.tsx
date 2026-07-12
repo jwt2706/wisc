@@ -8,17 +8,10 @@ export default function RevealPhase({ game }: { game: TuringTableGame }) {
       </p>
       <h2 className="mt-3 text-center font-display text-xl text-[#f8ecd1]">{game.currentPrompt}</h2>
 
-      <ul className="mt-6 space-y-3">
-        {game.anonymizedOrder.map((answer) => (
-          <li
-            className="rounded-2xl border border-white/10 bg-neutral-900/70 px-5 py-4 text-sm text-slate-100"
-            key={answer.answerLabel}
-          >
-            <span className="mr-2 font-semibold text-amber-200/80">{answer.answerLabel}.</span>
-            {answer.text}
-          </li>
-        ))}
-      </ul>
+      <p className="mx-auto mt-6 max-w-2xl text-center text-sm leading-relaxed text-slate-300">
+        Check the speech bubbles above each player in the scene to see what everyone answered this round.
+        Keep those answers in mind as the discussion gets tense.
+      </p>
 
       <div className="mt-8 flex justify-center">
         <button

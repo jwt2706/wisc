@@ -25,6 +25,51 @@ The helper supports eight built-in character types: narrator, hero, skeptic, wil
 
 If you want the frontend to read non-`VITE_` env vars, this repo is configured to expose the `ELEVENLABS_` prefix in Vite.
 
+## Transcript persistence setup (MongoDB Atlas)
+
+The game now saves full end-of-game transcripts and exposes a `Past Transcripts` browser before you press Play.
+
+By default, transcripts are stored in `localStorage` so the feature works immediately.
+
+### Recommended setup: private backend with your cluster URI
+
+The repo now includes a small Node transcript API in `server/transcriptsServer.mjs`.
+This is the recommended path if you already have a normal MongoDB Atlas connection string,
+because the database credentials stay server-side instead of being exposed in the browser.
+
+Add these to `.env` or `.env.local`:
+
+1. `MONGODB_URI`
+2. `MONGODB_DATABASE`
+3. `MONGODB_COLLECTION`
+4. `TRANSCRIPTS_API_PORT` (optional, defaults to `8787`)
+5. `TRANSCRIPTS_ALLOWED_ORIGIN` (optional, defaults to `*`)
+6. `VITE_TRANSCRIPTS_API_URL=/api`
+
+Then run both processes:
+
+1. `npm run dev:api`
+2. `npm run dev`
+
+The Vite dev server proxies `/api/*` requests to the transcript API automatically.
+
+### Alternative setup: Atlas Data API directly from the browser
+
+If you specifically want browser-side Atlas Data API access instead, configure these values in `.env.local`:
+
+1. `VITE_MONGODB_DATA_API_URL`
+2. `VITE_MONGODB_DATA_API_KEY`
+3. `VITE_MONGODB_DATA_SOURCE`
+4. `VITE_MONGODB_DATABASE`
+5. `VITE_MONGODB_COLLECTION` (optional, defaults to `transcripts`)
+
+Expected Data API URL format:
+
+`https://data.mongodb-api.com/app/<your-app-id>/endpoint/data/v1/action`
+
+After those env vars are set, end-of-game transcripts are upserted to Atlas and still cached locally.
+If Atlas is unavailable, the game falls back to local cache automatically.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

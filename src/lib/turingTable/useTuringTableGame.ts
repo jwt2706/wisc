@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import disconnectSound from '../../assets/disconnect.mp3'
 import { getCampfireCharacterVoiceAssignments } from '../campfireCharacters'
 import { createElevenLabsDubbingUrl } from '../elevenlabs'
-import { generateAiAnswer, generateAiDiscussionLine, generateAiVote } from './aiPlayers'
+import { generateAiAnswer, generateAiDiscussionRound, generateAiVote } from './aiPlayers'
 import { pickRandomPrompt } from './prompts'
 import type {
   AnonymizedAnswer,
@@ -25,11 +26,17 @@ function shuffle<T>(items: T[]): T[] {
   return copy
 }
 
-function answerLabelForIndex(index: number) {
+function answerLabelForAnswer(answer: RoundAnswer, playerLookup: Map<string, TuringTablePlayer>, index: number) {
+  const player = playerLookup.get(answer.playerId)
+
+  if (player?.label) {
+    return player.label
+  }
+
   return `Answer ${String.fromCharCode(65 + index)}`
 }
 
-function createInitialPlayers(): TuringTablePlayer[] {
+function createInitialPlayers(playerName: string): TuringTablePlayer[] {
   const aiRoster = getCampfireCharacterVoiceAssignments()
 
   const aiPlayers: TuringTablePlayer[] = aiRoster.map((character) => ({
@@ -42,7 +49,7 @@ function createInitialPlayers(): TuringTablePlayer[] {
 
   const humanPlayer: TuringTablePlayer = {
     id: 'human',
-    label: 'You',
+    label: playerName,
     role: 'human',
     voiceType: null,
     eliminated: false,
@@ -85,8 +92,14 @@ async function playPreparedAudio(audioUrl: string | null) {
   })
 }
 
-export function useTuringTableGame() {
-  const [players, setPlayers] = useState<TuringTablePlayer[]>(() => createInitialPlayers())
+function playEliminationSound() {
+  const audio = new Audio(disconnectSound)
+  void audio.play().catch(() => undefined)
+}
+
+export function useTuringTableGame(playerName: string) {
+  const normalizedPlayerName = playerName.trim() || 'John'
+  const [players, setPlayers] = useState<TuringTablePlayer[]>(() => createInitialPlayers(normalizedPlayerName))
   const [phase, setPhase] = useState<GamePhase>('answering')
   const [roundNumber, setRoundNumber] = useState(1)
   const [usedPrompts, setUsedPrompts] = useState<string[]>([])
@@ -108,6 +121,9 @@ export function useTuringTableGame() {
   playersRef.current = players
 
   const preparedLinesRef = useRef<Record<string, PreparedLine>>({})
+  const prefetchedDiscussionOrderRef = useRef<string[] | null>(null)
+  const prefetchedPreparedLinesRef = useRef<Record<string, PreparedLine> | null>(null)
+  const prefetchRunIdRef = useRef(0)
 
   const remainingPlayers = useMemo(() => players.filter((player) => !player.eliminated), [players])
   const currentSpeakerId = speakingOrder[currentSpeakerIndex] ?? null
@@ -117,8 +133,14 @@ export function useTuringTableGame() {
     [],
   )
 
+  const clearDiscussionPrefetch = useCallback(() => {
+    prefetchedDiscussionOrderRef.current = null
+    prefetchedPreparedLinesRef.current = null
+  }, [])
+
   const submitHumanAnswer = useCallback(
     async (humanText: string) => {
+      clearDiscussionPrefetch()
       setError(null)
       setIsLoadingAi(true)
 
@@ -136,9 +158,10 @@ export function useTuringTableGame() {
         const humanAnswer: RoundAnswer = { playerId: 'human', text: humanText.trim() }
         const allAnswers = [humanAnswer, ...aiAnswers]
         const shuffled = shuffle(allAnswers)
+        const playerLookup = new Map(activePlayers.map((player) => [player.id, player]))
 
         const anonymized: AnonymizedAnswer[] = shuffled.map((answer, index) => ({
-          answerLabel: answerLabelForIndex(index),
+          answerLabel: answerLabelForAnswer(answer, playerLookup, index),
           playerId: answer.playerId,
           text: answer.text,
         }))
@@ -152,7 +175,7 @@ export function useTuringTableGame() {
         setIsLoadingAi(false)
       }
     },
-    [currentPrompt],
+    [clearDiscussionPrefetch, currentPrompt],
   )
 
   // Plays back turns in order using lines that were already generated (text + audio) up
@@ -193,8 +216,104 @@ export function useTuringTableGame() {
     [findPlayer],
   )
 
-  const beginDiscussion = useCallback(() => {
+  // Prepares the next consecutive block of AI turns using one batched Gemini call.
+  // Stops at the next human turn (or the end of the round).
+  const prepareAiDiscussionSegment = useCallback(
+    async (order: string[], startIndex: number, transcriptSoFar: DiscussionLine[]) => {
+      const segmentIds: string[] = []
+      for (let index = startIndex; index < order.length; index += 1) {
+        const playerId = order[index]
+        const speaker = findPlayer(playerId)
+
+        if (!speaker) {
+          continue
+        }
+
+        if (speaker.role === 'human') {
+          break
+        }
+
+        segmentIds.push(speaker.id)
+      }
+
+      if (segmentIds.length === 0) {
+        return {}
+      }
+
+      const aiSpeakers = segmentIds
+        .map((playerId) => findPlayer(playerId))
+        .filter((player): player is TuringTablePlayer => Boolean(player) && player!.role === 'ai')
+
+      const remaining = playersRef.current.filter((player) => !player.eliminated)
+      const ownAnswers = Object.fromEntries(currentAnswers.map((answer) => [answer.playerId, answer.text]))
+
+      const generatedLines = await generateAiDiscussionRound({
+        speakingOrder: aiSpeakers,
+        prompt: currentPrompt,
+        anonymizedAnswers: anonymizedOrder,
+        ownAnswers,
+        transcriptSoFar,
+        remainingPlayers: remaining,
+      })
+
+      const generatedMap = new Map(generatedLines.map((line) => [line.playerId, line.text]))
+
+      const preparedEntries = await Promise.all(
+        aiSpeakers.map(async (speaker) => {
+          const text = generatedMap.get(speaker.id)?.trim()
+
+          if (!text) {
+            throw new Error(`Missing generated discussion line for ${speaker.label}.`)
+          }
+
+          const audioUrl = await prepareDiscussionAudio(speaker.voiceType, text)
+          return [speaker.id, { text, audioUrl }] as const
+        }),
+      )
+
+      const preparedMap = Object.fromEntries(preparedEntries)
+      preparedLinesRef.current = {
+        ...preparedLinesRef.current,
+        ...preparedMap,
+      }
+
+      return preparedMap
+    },
+    [anonymizedOrder, currentAnswers, currentPrompt, findPlayer],
+  )
+
+  useEffect(() => {
+    if (phase !== 'revealing') {
+      return
+    }
+
     const order = shuffle(remainingPlayers.map((player) => player.id))
+    const runId = prefetchRunIdRef.current + 1
+    prefetchRunIdRef.current = runId
+
+    prefetchedDiscussionOrderRef.current = order
+    prefetchedPreparedLinesRef.current = null
+
+    void (async () => {
+      try {
+        const prepared = await prepareAiDiscussionSegment(order, 0, [])
+        if (prefetchRunIdRef.current !== runId) {
+          return
+        }
+        prefetchedPreparedLinesRef.current = prepared
+      } catch (error) {
+        if (prefetchRunIdRef.current !== runId) {
+          return
+        }
+        console.warn('[discussion] background prefetch failed; will generate on start', error)
+      }
+    })()
+  }, [phase, prepareAiDiscussionSegment, remainingPlayers])
+
+  const beginDiscussion = useCallback(() => {
+    const order = prefetchedDiscussionOrderRef.current ?? shuffle(remainingPlayers.map((player) => player.id))
+    const prefetchedPreparedLines = prefetchedPreparedLinesRef.current
+
     setSpeakingOrder(order)
     setCurrentSpeakerIndex(0)
     setDiscussionTranscript([])
@@ -202,35 +321,16 @@ export function useTuringTableGame() {
     setError(null)
     setIsLoadingAi(true)
 
-    const aiSpeakers = order
-      .map((playerId) => findPlayer(playerId))
-      .filter((player): player is TuringTablePlayer => Boolean(player) && player!.role === 'ai')
-
     void (async () => {
       try {
-        // Fire off every AI's discussion line AND its voice audio in parallel - five
-        // Gemini calls and five ElevenLabs calls at once - instead of one at a time.
-        const preparedEntries = await Promise.all(
-          aiSpeakers.map(async (speaker) => {
-            const ownAnswer = currentAnswers.find((answer) => answer.playerId === speaker.id)?.text ?? ''
-            const remaining = playersRef.current.filter((player) => !player.eliminated)
+        preparedLinesRef.current = {}
+        if (prefetchedPreparedLines && prefetchedDiscussionOrderRef.current === order) {
+          preparedLinesRef.current = { ...prefetchedPreparedLines }
+        } else {
+          await prepareAiDiscussionSegment(order, 0, [])
+        }
 
-            const text = await generateAiDiscussionLine({
-              player: speaker,
-              prompt: currentPrompt,
-              ownAnswer,
-              anonymizedAnswers: anonymizedOrder,
-              transcriptSoFar: [],
-              remainingPlayers: remaining,
-            })
-
-            const audioUrl = await prepareDiscussionAudio(speaker.voiceType, text)
-
-            return [speaker.id, { text, audioUrl }] as const
-          }),
-        )
-
-        preparedLinesRef.current = Object.fromEntries(preparedEntries)
+        clearDiscussionPrefetch()
         setIsLoadingAi(false)
         await playDiscussionQueue(order, 0, [])
       } catch (caughtError) {
@@ -240,10 +340,10 @@ export function useTuringTableGame() {
         )
       }
     })()
-  }, [anonymizedOrder, currentAnswers, currentPrompt, findPlayer, playDiscussionQueue, remainingPlayers])
+  }, [clearDiscussionPrefetch, playDiscussionQueue, prepareAiDiscussionSegment, remainingPlayers])
 
   const submitHumanDiscussionLine = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const humanPlayer = findPlayer('human')
 
       if (!humanPlayer) {
@@ -256,9 +356,29 @@ export function useTuringTableGame() {
 
       const nextIndex = currentSpeakerIndex + 1
       setCurrentSpeakerIndex(nextIndex)
-      void playDiscussionQueue(speakingOrder, nextIndex, nextTranscript)
+
+      setError(null)
+      setIsLoadingAi(true)
+
+      try {
+        await prepareAiDiscussionSegment(speakingOrder, nextIndex, nextTranscript)
+        setIsLoadingAi(false)
+        await playDiscussionQueue(speakingOrder, nextIndex, nextTranscript)
+      } catch (caughtError) {
+        setIsLoadingAi(false)
+        setError(
+          caughtError instanceof Error ? caughtError.message : 'The table had trouble responding to your interjection.',
+        )
+      }
     },
-    [currentSpeakerIndex, discussionTranscript, findPlayer, playDiscussionQueue, speakingOrder],
+    [
+      currentSpeakerIndex,
+      discussionTranscript,
+      findPlayer,
+      playDiscussionQueue,
+      prepareAiDiscussionSegment,
+      speakingOrder,
+    ],
   )
 
   const finalizeVotesAndTally = useCallback(
@@ -278,6 +398,7 @@ export function useTuringTableGame() {
           player.id === eliminatedId ? { ...player, eliminated: true } : player,
         )
 
+        playEliminationSound()
         setPlayers(updatedPlayers)
         setEliminatedThisRound(topCandidates[0])
         setTieCandidateIds(null)
@@ -349,21 +470,29 @@ export function useTuringTableGame() {
           : remainingPlayers
 
         const aiVoters = remainingPlayers.filter((player) => player.role === 'ai')
+        const humanPlayerLabel = playersRef.current.find((player) => player.id === 'human')?.label ?? 'John'
 
         const aiVotes = await Promise.all(
           aiVoters.map(async (voter) => {
             const candidates = candidatePool.filter((candidate) => candidate.id !== voter.id)
 
-            const targetIdChosen = await generateAiVote({
+            const choice = await generateAiVote({
               player: voter,
               prompt: currentPrompt,
               ownAnswer: currentAnswers.find((answer) => answer.playerId === voter.id)?.text ?? '',
               anonymizedAnswers: anonymizedOrder,
               transcript: discussionTranscript,
               candidates,
+              humanPlayerLabel,
             })
 
-            return { voterId: voter.id, targetId: targetIdChosen }
+            return {
+              voterId: voter.id,
+              targetId: choice.targetId,
+              reason: choice.reason,
+              humanSuspicionPercent: choice.humanSuspicionPercent,
+              humanSuspicionReason: choice.humanSuspicionReason,
+            }
           }),
         )
 
@@ -390,6 +519,7 @@ export function useTuringTableGame() {
   )
 
   const startNextRound = useCallback(() => {
+    clearDiscussionPrefetch()
     const nextUsedPrompts = [...usedPrompts, currentPrompt]
     const nextPrompt = pickRandomPrompt(nextUsedPrompts)
 
@@ -405,7 +535,7 @@ export function useTuringTableGame() {
     setTieCandidateIds(null)
     setEliminatedThisRound(null)
     setPhase('answering')
-  }, [currentPrompt, usedPrompts])
+  }, [clearDiscussionPrefetch, currentPrompt, usedPrompts])
 
   return {
     phase,
