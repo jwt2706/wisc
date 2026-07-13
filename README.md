@@ -1,143 +1,47 @@
-# React + TypeScript + Vite
+# 🐺 Wolf In Sheep's Clothing
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+*Can a human learn to think like an AI well enough to fool one?*
 
-## Gemini setup
+You're the only human in a room full of AI agents. Every round, everyone answers the same question and everyone votes on who they think is human. Blend in, stay convincing, and survive long enough to uncover the truth.
 
-This project includes a small browser-side Gemini playground using the Google Gen AI SDK.
+Built for **cuHacking7**. [Read the full Devpost writeup →](https://devpost.com/software/wolf-in-sheep-s-clothing)
 
-1. Copy `.env.example` to `.env.local`.
-2. Add your Gemini API key to `VITE_GEMINI_API_KEY`.
-3. Run `npm run dev` and try a prompt in the app.
+## The concept
 
-Note: browser-side API keys are visible to users, so move the request behind a server before production use.
+Most social deduction games have AI trying to fool humans. We flipped it: **you're the impostor**, and everyone else at the table is an agent trying to sniff you out.
 
-## ElevenLabs dubbing setup
+Each round has two phases:
 
-This project also includes a browser-side ElevenLabs helper for multi-character dialogue audio.
+- **Question Phase**: every participant (including you) answers the same prompt.
+- **Elimination Phase**: the AI agents analyze all the responses and vote on who they think is human.
 
-1. Copy `.env.example` to `.env.local`.
-2. Add your ElevenLabs API key to `ELEVENLABS_API_KEY`.
-3. Set voice IDs for the character slots you want to use, at minimum `ELEVENLABS_VOICE_NARRATOR`, `ELEVENLABS_VOICE_HERO`, and `ELEVENLABS_VOICE_VILLAIN`.
-4. Run `npm run dev` and use the helper in `src/lib/elevenlabs.ts` to generate dialogue audio.
+The trick is that anything too emotional, personal, or "human" will get you caught, so you have to answer like a machine would. After each vote, you can dig into the agents' reasoning, voting breakdowns, and decisions to sharpen your strategy for the next round. The world runs on custom pixel art in a 2.5D platformer-style environment.
 
-The helper supports eight built-in character types: narrator, hero, skeptic, wild, calm, villain, whisper, and comic.
+## Tech stack
 
-If you want the frontend to read non-`VITE_` env vars, this repo is configured to expose the `ELEVENLABS_` prefix in Vite.
+React · TypeScript · Vite · Google Gemini · ElevenLabs · MongoDB Atlas · Three.js · Tailwind CSS
 
-## Transcript persistence setup (MongoDB Atlas)
+## Setup
 
-The game now saves full end-of-game transcripts and exposes a `Past Transcripts` browser before you press Play.
+> Non-`VITE_`-prefixed `ELEVENLABS_` vars are exposed to the frontend via Vite config.
 
-By default, transcripts are stored in `localStorage` so the feature works immediately.
+> ⚠️ Browser-exposed API keys (Gemini, Atlas Data API) are visible to end users, we wanted to add a server to take care of these things safely but didn't get there yet.
 
-### Recommended setup: private backend with your cluster URI
+### 1. Install & run
 
-The repo now includes a small Node transcript API in `server/transcriptsServer.mjs`.
-This is the recommended path if you already have a normal MongoDB Atlas connection string,
-because the database credentials stay server-side instead of being exposed in the browser.
-
-Add these to `.env` or `.env.local`:
-
-1. `MONGODB_URI`
-2. `MONGODB_DATABASE`
-3. `MONGODB_COLLECTION`
-4. `TRANSCRIPTS_API_PORT` (optional, defaults to `8787`)
-5. `TRANSCRIPTS_ALLOWED_ORIGIN` (optional, defaults to `*`)
-6. `VITE_TRANSCRIPTS_API_URL=/api`
-
-Then run both processes:
-
-1. `npm run dev:api`
-2. `npm run dev`
-
-The Vite dev server proxies `/api/*` requests to the transcript API automatically.
-
-### Alternative setup: Atlas Data API directly from the browser
-
-If you specifically want browser-side Atlas Data API access instead, configure these values in `.env.local`:
-
-1. `VITE_MONGODB_DATA_API_URL`
-2. `VITE_MONGODB_DATA_API_KEY`
-3. `VITE_MONGODB_DATA_SOURCE`
-4. `VITE_MONGODB_DATABASE`
-5. `VITE_MONGODB_COLLECTION` (optional, defaults to `transcripts`)
-
-Expected Data API URL format:
-
-`https://data.mongodb-api.com/app/<your-app-id>/endpoint/data/v1/action`
-
-After those env vars are set, end-of-game transcripts are upserted to Atlas and still cached locally.
-If Atlas is unavailable, the game falls back to local cache automatically.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Gemini (AI agent responses)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. Copy `.env.example` to `.env.local`.
+2. Set `VITE_GEMINI_API_KEY` to your Gemini API key.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 3. ElevenLabs (character voice audio)
 
-```
+1. In the same `.env.local`, set `ELEVENLABS_API_KEY`.
+2. Set a voice ID for each character slot you want to use — at minimum `ELEVENLABS_VOICE_NARRATOR`, `ELEVENLABS_VOICE_HERO`, and `ELEVENLABS_VOICE_VILLAIN`.
+3. Eight character types are supported out of the box: narrator, hero, skeptic, wild, calm, villain, whisper, and comic.
+4. Generate dialogue audio via `src/lib/elevenlabs.ts`.
